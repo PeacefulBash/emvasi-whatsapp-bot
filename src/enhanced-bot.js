@@ -4,46 +4,13 @@ const axios = require("axios");
 const fs = require("fs");
 const { Pool } = require("pg");
 
-console.log("Emvasi Bot - Starting with PostgreSQL...");
+console.log("Emvasi Bot - Starting...");
 
 // PostgreSQL connection
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL || "postgres://localhost/emvasi",
     ssl: { rejectUnauthorized: false }
 });
-
-// Initialize session table
-async function initDB() {
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS whatsapp_session (
-            id TEXT PRIMARY KEY DEFAULT 'default',
-            session_data JSONB,
-            updated_at TIMESTAMP DEFAULT NOW()
-        )
-    `);
-    console.log("Database ready");
-}
-
-// Load session from PostgreSQL
-async function loadSession() {
-    const result = await pool.query("SELECT session_data FROM whatsapp_session WHERE id = 'default'");
-    if (result.rows[0] && result.rows[0].session_data) {
-        console.log("Session loaded from database");
-        return result.rows[0].session_data;
-    }
-    return null;
-}
-
-// Save session to PostgreSQL
-async function saveSession(session) {
-    await pool.query(
-        `INSERT INTO whatsapp_session (id, session_data, updated_at) 
-         VALUES ('default', $1, NOW()) 
-         ON CONFLICT (id) 
-         DO UPDATE SET session_data = $1, updated_at = NOW()`,
-        [JSON.stringify(session)]
-    );
-}
 
 // Environment detection
 const isWindows = process.platform === "win32";
@@ -68,30 +35,6 @@ async function getPuppeteerConfig() {
         };
     }
 }
-
-// Custom auth strategy that uses PostgreSQL
-class PostgresAuthStrategy {
-    constructor() {
-        this.session = null;
-    }
-    
-    async save(data) {
-        this.session = data;
-        await saveSession(data);
-    }
-    
-    async load() {
-        if (this.session) return this.session;
-        this.session = await loadSession();
-        return this.session;
-    }
-    
-    async remove() {
-        this.session = null;
-        await pool.query("DELETE FROM whatsapp_session WHERE id = 'default'");
-    }
-}
-
 // ============================================
 // COMPLETE KNOWLEDGE BASE
 // ============================================
@@ -173,21 +116,19 @@ function findAnswer(question) {
 // ============================================
 
 async function startBot() {
-    // Initialize database
-    await initDB();
     
-    // Get puppeteer config
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS whatsapp_session (
+            id TEXT PRIMARY KEY,
+            session_data TEXT,
+            updated_at TIMESTAMP DEFAULT NOW()
+        )
+    `);
+    
     const config = await getPuppeteerConfig();
     
-    // Create client with PostgreSQL auth
-    const authStrategy = new PostgresAuthStrategy();
-    
     const client = new Client({
-        authStrategy: {
-            save: (data) => authStrategy.save(data),
-            load: () => authStrategy.load(),
-            remove: () => authStrategy.remove()
-        },
+        authStrategy: new LocalAuth({ dataPath: "./whatsapp-session" }),
         puppeteer: config
     });
     
@@ -196,8 +137,28 @@ async function startBot() {
         qrcode.generate(qr, { small: true });
     });
     
-    client.on("ready", () => {
+    client.on("ready", async () => {
         console.log("Emvasi Bot ONLINE at", new Date().toLocaleTimeString());
+        
+        // Save session to PostgreSQL after successful connection
+        try {
+            const sessionPath = "./whatsapp-session";
+            if (fs.existsSync(sessionPath)) {
+                const files = fs.readdirSync(sessionPath);
+                for (const file of files) {
+                    const content = fs.readFileSync(`${sessionPath}/${file}`, "utf8");
+                    await pool.query(
+                        `INSERT INTO whatsapp_session (id, session_data) 
+                         VALUES ($1, $2) 
+                         ON CONFLICT (id) DO UPDATE SET session_data = $2`,
+                        [file, content]
+                    );
+                }
+                console.log("Session backed up to PostgreSQL");
+            }
+        } catch (e) {
+            console.error("Session backup failed:", e.message);
+        }
     });
     
     client.on("message", async (message) => {
@@ -236,12 +197,12 @@ async function startBot() {
             if (text.length > 5) {
                 const searchResult = await webSearch(text);
                 if (searchResult) {
-                    await chat.sendMessage("Here's what I found:\n\n" + searchResult);
+                    await chat.sendMessage("Found:\n\n" + searchResult);
                     return;
                 }
             }
             
-            await chat.sendMessage("Type *help* to see what I know about Emvasi Alumni Club!");
+            await chat.sendMessage("Type *help* to see what I know!");
             
         } catch (error) {
             console.error("Error:", error.message);
@@ -249,22 +210,15 @@ async function startBot() {
     });
     
     await client.initialize();
-    console.log("Bot initialized successfully");
+    console.log("Bot initialized");
 }
 
-startBot().catch(err => {
-    console.error("Failed to start bot:", err);
-});
+startBot().catch(err => console.error("Failed:", err));
 
-// ============================================
-// HTTP SERVER (Render port binding)
-// ============================================
+// HTTP Server
 const http = require("http");
 const PORT = process.env.PORT || 10000;
-
 http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/html" });
-    res.end("<h1>Emvasi Bot is Running</h1>");
-}).listen(PORT, () => {
-    console.log("Web server listening on port " + PORT);
-});
+    res.end("<h1>Bot Running</h1>");
+}).listen(PORT, () => console.log("Server on port " + PORT));
