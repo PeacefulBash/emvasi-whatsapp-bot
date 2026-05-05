@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  evolution-api:
+    image: atendai/evolution-api:latest
+    container_name: evolution-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+    environment:
+      - SERVER_URL=http://your-server-ip:8080
+      - AUTHENTICATION_API_KEY=your-evolution-api-key
+      - DATABASE_ENABLED=false
+      - DATABASE_PROVIDER=sqlite
+      - DATABASE_CONNECTION_URI=/evolution/instances/database.sqlite
+      - WA_BUSINESS_TOKEN_WEBHOOK=http://your-server-ip:3000/webhook/whatsapp
+      - WA_BUSINESS_URL=https://graph.facebook.com
+      - DEL_INSTANCE=false
+    networks:
+      - evolution-network
+
+volumes:
+  evolution_instances:
+
+networks:
+  evolution-network:
+    driver: bridge

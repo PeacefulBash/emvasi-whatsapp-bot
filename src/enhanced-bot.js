@@ -2,6 +2,54 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const axios = require("axios");
 const fs = require("fs");
+const { Pool } = require("pg");
+
+// PostgreSQL connection for session storage
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || "postgres://emvasi:password@localhost/emvasi",
+    ssl: { rejectUnauthorized: false }
+});
+
+// Custom auth strategy that uses PostgreSQL instead of files
+class PostgresAuth {
+    constructor(client) {
+        this.client = client;
+    }
+    
+    async setupTable() {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS whatsapp_session (
+                id SERIAL PRIMARY KEY,
+                phone_number TEXT UNIQUE,
+                session_data JSONB,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+    }
+    
+    async save(phone, session) {
+        await this.setupTable();
+        await pool.query(
+            `INSERT INTO whatsapp_session (phone_number, session_data, updated_at) 
+             VALUES ($1, $2, NOW()) 
+             ON CONFLICT (phone_number) 
+             DO UPDATE SET session_data = $2, updated_at = NOW()`,
+            [phone, JSON.stringify(session)]
+        );
+    }
+    
+    async load(phone) {
+        await this.setupTable();
+        const result = await pool.query(
+            `SELECT session_data FROM whatsapp_session WHERE phone_number = $1`,
+            [phone]
+        );
+        return result.rows[0] ? result.rows[0].session_data : null;
+    }
+}
+
+const authStrategy = new PostgresAuth();
 
 console.log("Emvasi Bot - Starting...");
 
