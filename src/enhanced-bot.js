@@ -7,31 +7,28 @@ console.log("Emvasi Bot - Starting...");
 
 const isWindows = process.platform === "win32";
 
-let puppeteerConfig;
-
-if (isWindows) {
-    const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
-    puppeteerConfig = {
-        headless: false,
-        executablePath: fs.existsSync(edgePath) ? edgePath : undefined,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    };
-    console.log("Using Edge (Windows)");
-} else {
-    // Linux: use @sparticuz/chromium
-    const chromium = require("@sparticuz/chromium");
-    puppeteerConfig = {
-        headless: chromium.headless,
-        executablePath: chromium.executablePath(),
-        args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"]
-    };
-    console.log("Using Chromium (Linux)");
+async function getPuppeteerConfig() {
+    if (isWindows) {
+        const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+        console.log("Using Edge (Windows)");
+        return {
+            headless: false,
+            executablePath: fs.existsSync(edgePath) ? edgePath : undefined,
+            args: ["--no-sandbox", "--disable-setuid-sandbox"]
+        };
+    } else {
+        const chromium = require("@sparticuz/chromium");
+        const execPath = await chromium.executablePath();
+        console.log("Using Chromium (Linux) at:", execPath);
+        return {
+            headless: chromium.headless,
+            executablePath: execPath,
+            args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"]
+        };
+    }
 }
 
-const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: "./whatsapp-session" }),
-    puppeteer: puppeteerConfig
-});
+let client;
 // ============================================
 // COMPLETE KNOWLEDGE BASE
 // ============================================
@@ -203,80 +200,88 @@ function findAnswer(question) {
     }
     return null;
 }
-
-// ============================================
-// BOT INITIALIZATION
-// ============================================
-
-client.on("qr", (qr) => {
-    console.log("\nSCAN QR CODE WITH WHATSAPP:\n");
-    qrcode.generate(qr, { small: true });
-    console.log("\nOpen WhatsApp > Linked Devices > Link a Device\n");
-});
-
-client.on("ready", () => {
-    console.log("Emvasi Bot ONLINE at", new Date().toLocaleTimeString());
-    console.log("Knowledge base: " + Object.keys(knowledge).length + " topics");
-    console.log("Web search: ENABLED (DuckDuckGo)\n");
-});
-
-client.on("message", async (message) => {
-    try {
-        if (message.from.includes("@g.us") || message.fromMe) return;
-        
-        const chat = await message.getChat();
-        const phone = message.from.split("@")[0];
-        const text = message.body.trim();
-        const lowerText = text.toLowerCase();
-        
-        console.log("[" + phone + "]: " + text);
-        
-        await chat.sendStateTyping();
-        
-        let answer = findAnswer(text);
-        
-        if (answer) {
-            await chat.sendMessage(answer);
-            return;
-        }
-        
-        if (lowerText.includes("register") || lowerText.includes("join") || lowerText.includes("sign up")) {
-            await chat.sendMessage("Register for FREE at: https://emvasi-alumni-club.infinityfreeapp.com\n\nMembership is open to alumni, students, parents, staff, and friends of UNESWA!");
-            return;
-        }
-        
-        if (lowerText.includes("plan") || lowerText.includes("price") || lowerText.includes("cost") || lowerText.includes("pricing")) {
-            await chat.sendMessage("Emvasi Membership Subscription Plans:\n\nMONTHLY:\n- Elementary: E180/month\n- Vantage: E220/month\n- Premium: E270/month\n- Quantum: E355/month\n\nVisit our website to subscribe!");
-            return;
-        }
-        
-        if (lowerText.includes("event") || lowerText.includes("calendar") || lowerText.includes("upcoming")) {
-            await chat.sendMessage("Upcoming Emvasi Events:\n\n- June, 2026 - Alumni Faculty Chapter Meetings\n- August 15, 2026 - AGM\n- September 12, 2026 - Family Fun Day\n- Date TBA - Gala Dinner (Masquerade Ball)\n- Date TBA - Univibes Music Festival\n- Date TBA - Sports Tournament\n\nStay tuned for updates!");
-            return;
-        }
-        
-        if (text.length > 5) {
-            console.log("Searching web for: " + text);
-            const searchResult = await webSearch(text);
-            if (searchResult) {
-                await chat.sendMessage("Here's what I found:\n\n" + searchResult + "\n\nIs this helpful? You can also ask me about Emvasi Alumni club topics!");
-                return;
-            }
-        }
-        
-        await chat.sendMessage("Interesting remark, unfortunately I don't have that information yet.\n\nTry typing *help* to see what I know about Emvasi Alumni Club, UNESWA leadership, events, membership plans or any other matter related to the Fund and the Club!");
-        
-    } catch (error) {
-        console.error("Error:", error.message);
-    }
-});
-
 // ============================================
 // START THE BOT
 // ============================================
-client.initialize().then(() => {
+// ============================================
+// INITIALIZE BOT WITH PUPPETEER CONFIG
+// ============================================
+async function startBot() {
+    const config = await getPuppeteerConfig();
+    client = new Client({
+        authStrategy: new LocalAuth({ dataPath: "./whatsapp-session" }),
+        puppeteer: config
+    });
+    
+    // Set up event handlers
+    client.on("qr", (qr) => {
+        console.log("\nSCAN QR CODE WITH WHATSAPP:\n");
+        qrcode.generate(qr, { small: true });
+        console.log("\nOpen WhatsApp > Linked Devices > Link a Device\n");
+    });
+
+    client.on("ready", () => {
+        console.log("Emvasi Bot ONLINE at", new Date().toLocaleTimeString());
+        console.log("Knowledge base: " + Object.keys(knowledge).length + " topics");
+        console.log("Web search: ENABLED (DuckDuckGo)\n");
+    });
+
+    client.on("message", async (message) => {
+        try {
+            if (message.from.includes("@g.us") || message.fromMe) return;
+            
+            const chat = await message.getChat();
+            const phone = message.from.split("@")[0];
+            const text = message.body.trim();
+            const lowerText = text.toLowerCase();
+            
+            console.log("[" + phone + "]: " + text);
+            
+            await chat.sendStateTyping();
+            
+            let answer = findAnswer(text);
+            
+            if (answer) {
+                await chat.sendMessage(answer);
+                return;
+            }
+            
+            if (lowerText.includes("register") || lowerText.includes("join") || lowerText.includes("sign up")) {
+                await chat.sendMessage("Register for FREE at: https://emvasi-alumni-club.infinityfreeapp.com\n\nMembership is open to alumni, students, parents, staff, and friends of UNESWA!");
+                return;
+            }
+            
+            if (lowerText.includes("plan") || lowerText.includes("price") || lowerText.includes("cost") || lowerText.includes("pricing")) {
+                await chat.sendMessage("Emvasi Membership Subscription Plans:\n\nMONTHLY:\n- Elementary: E180/month\n- Vantage: E220/month\n- Premium: E270/month\n- Quantum: E355/month\n\nVisit our website to subscribe!");
+                return;
+            }
+            
+            if (lowerText.includes("event") || lowerText.includes("calendar") || lowerText.includes("upcoming")) {
+                await chat.sendMessage("Upcoming Emvasi Events:\n\n- June, 2026 - Alumni Faculty Chapter Meetings\n- August 15, 2026 - AGM\n- September 12, 2026 - Family Fun Day\n- Date TBA - Gala Dinner (Masquerade Ball)\n- Date TBA - Univibes Music Festival\n- Date TBA - Sports Tournament\n\nStay tuned for updates!");
+                return;
+            }
+            
+            if (text.length > 5) {
+                console.log("Searching web for: " + text);
+                const searchResult = await webSearch(text);
+                if (searchResult) {
+                    await chat.sendMessage("Here's what I found:\n\n" + searchResult + "\n\nIs this helpful? You can also ask me about Emvasi Alumni club topics!");
+                    return;
+                }
+            }
+            
+            await chat.sendMessage("Interesting remark, unfortunately I don't have that information yet.\n\nTry typing *help* to see what I know!");
+            
+        } catch (error) {
+            console.error("Error:", error.message);
+        }
+    });
+    
+    await client.initialize();
     console.log("Bot initialized successfully");
-}).catch(err => {
+}
+
+startBot().catch(err => {
     console.error("Failed to start bot:", err);
 });
 
