@@ -22,7 +22,7 @@ if (isWindows) {
     const chromium = require("@sparticuz/chromium");
     puppeteerConfig = {
         headless: chromium.headless,
-        executablePath: await chromium.executablePath(),
+        executablePath: chromium.executablePath(),
         args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"]
     };
     console.log("Using Chromium (Linux)");
@@ -274,14 +274,10 @@ client.on("message", async (message) => {
 // ============================================
 // START THE BOT
 // ============================================
-async function startBot() {
-    await client.initialize();
+client.initialize().then(() => {
     console.log("Bot initialized successfully");
-}
-
-startBot().catch(err => {
+}).catch(err => {
     console.error("Failed to start bot:", err);
-    process.exit(1);
 });
 
 // ============================================
