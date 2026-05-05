@@ -276,3 +276,19 @@ client.on("message", async (message) => {
 });
 
 client.initialize();
+client.initialize();
+
+// ============================================
+// DUMMY HTTP SERVER (for Render port binding)
+// ============================================
+const http = require("http");
+const PORT = process.env.PORT || 10000;
+
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end("<h1>Emvasi Bot is Running</h1><p>WhatsApp bot active.</p>");
+});
+
+server.listen(PORT, () => {
+    console.log("Web server listening on port " + PORT);
+});
