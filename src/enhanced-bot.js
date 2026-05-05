@@ -5,37 +5,33 @@ const fs = require("fs");
 
 console.log("Emvasi Bot - Starting...");
 
-// Detect environment
 const isWindows = process.platform === "win32";
 
-// Puppeteer configuration
-const puppeteerConfig = {
-    headless: isWindows ? false : "new",
-    args: [
-        "--no-sandbox", 
-        "--disable-setuid-sandbox", 
-        "--disable-dev-shm-usage",
-        "--disable-gpu"
-    ]
-};
+let puppeteerConfig;
 
-// Windows: use Edge
 if (isWindows) {
     const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
-    if (fs.existsSync(edgePath)) {
-        puppeteerConfig.executablePath = edgePath;
-        console.log("Using Edge (Windows)");
-    }
+    puppeteerConfig = {
+        headless: false,
+        executablePath: fs.existsSync(edgePath) ? edgePath : undefined,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    };
+    console.log("Using Edge (Windows)");
 } else {
-    // Linux: let Puppeteer find its own Chromium (installed via postinstall)
-    console.log("Linux detected - using Puppeteer Chromium");
+    // Linux: use @sparticuz/chromium
+    const chromium = require("@sparticuz/chromium");
+    puppeteerConfig = {
+        headless: chromium.headless,
+        executablePath: await chromium.executablePath(),
+        args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"]
+    };
+    console.log("Using Chromium (Linux)");
 }
 
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: "./whatsapp-session" }),
     puppeteer: puppeteerConfig
 });
-
 // ============================================
 // COMPLETE KNOWLEDGE BASE
 // ============================================
@@ -275,8 +271,18 @@ client.on("message", async (message) => {
     }
 });
 
-client.initialize();
-client.initialize();
+// ============================================
+// START THE BOT
+// ============================================
+async function startBot() {
+    await client.initialize();
+    console.log("Bot initialized successfully");
+}
+
+startBot().catch(err => {
+    console.error("Failed to start bot:", err);
+    process.exit(1);
+});
 
 // ============================================
 // DUMMY HTTP SERVER (for Render port binding)
@@ -286,7 +292,7 @@ const PORT = process.env.PORT || 10000;
 
 const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/html" });
-    res.end("<h1>Emvasi Bot is Running</h1><p>WhatsApp bot active.</p>");
+    res.end("<h1>Emvasi Bot is Running</h1>");
 });
 
 server.listen(PORT, () => {
