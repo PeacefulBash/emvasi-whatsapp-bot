@@ -3,30 +3,32 @@ const qrcode = require("qrcode-terminal");
 const axios = require("axios");
 const fs = require("fs");
 
-console.log("Emvasi Bot - Enhanced Version with Web Search...");
+console.log("Emvasi Bot - Starting...");
 
 // Detect environment
 const isWindows = process.platform === "win32";
-const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 
 // Puppeteer configuration
 const puppeteerConfig = {
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+    headless: isWindows ? false : "new",
+    args: [
+        "--no-sandbox", 
+        "--disable-setuid-sandbox", 
+        "--disable-dev-shm-usage",
+        "--disable-gpu"
+    ]
 };
 
-// Windows: use Edge with GUI
+// Windows: use Edge
 if (isWindows) {
-    puppeteerConfig.headless = false;
+    const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
     if (fs.existsSync(edgePath)) {
         puppeteerConfig.executablePath = edgePath;
-        console.log("Using Edge browser (Windows)");
-    } else {
-        console.log("Edge not found, using default Chromium");
+        console.log("Using Edge (Windows)");
     }
 } else {
-    // Linux/Render: headless Chromium
-    puppeteerConfig.headless = "new";
-    console.log("Running on Linux - using headless Chromium");
+    // Linux: let Puppeteer find its own Chromium (installed via postinstall)
+    console.log("Linux detected - using Puppeteer Chromium");
 }
 
 const client = new Client({
