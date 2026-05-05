@@ -216,7 +216,10 @@ async function startBot() {
     // Set up event handlers
     client.on("qr", (qr) => {
         console.log("\nSCAN QR CODE WITH WHATSAPP:\n");
-        qrcode.generate(qr, { small: true });
+        console.log("\n=== QR CODE URL ===");
+console.log("Scan this in your browser or WhatsApp:");
+console.log(qr);
+qrcode.generate(qr, { small: true });
         console.log("\nOpen WhatsApp > Linked Devices > Link a Device\n");
     });
 
